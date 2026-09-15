@@ -1,21 +1,21 @@
 import json
-from email import message
-
 import yaml
 import os
 
-from attr.validators import max_len
 from dotenv import load_dotenv
 from openai import OpenAI
-from openai.types.beta.chatkit import ChatSessionHistory
 
+from memory.history_store import ChatHistoryMemory
+from tools import CalculatorTool, SearchDemoTool
+
+load_dotenv()
 
 class SimpleAgent:
     def __init__(self, settings_path:str="settings.json", agent_yaml_path="agents/agent.yaml"):
         with open(settings_path,"r", encoding="utf-8") as f:
             self.settings = json.load(f)
         with open(agent_yaml_path,"r", encoding="utf-8") as f:
-            self.agent_meta = yaml.self_load(f)
+            self.agent_meta = yaml.safe_load(f)
 
         self.client = OpenAI(
             base_url=os.getenv("LLM_BASE_URL"),
@@ -23,7 +23,7 @@ class SimpleAgent:
         )
         self.model = os.getenv("LLM_MODEL")
 
-        self.memory = ChatSessionHistory(max_len=self.settings["memory_max_history"])
+        self.memory = ChatHistoryMemory(max_len=self.settings["memory_max_history"])
 
         self.tools_map = {
             "calculator":CalculatorTool(),

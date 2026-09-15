@@ -1,0 +1,3 @@
+agent_name: DemoAgent
+role: "具备工具调用能力的智能助手"
+goal: "解决用户问题，合理使用工具"

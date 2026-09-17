@@ -17,7 +17,8 @@ def test_query_uses_calculator(capfd):
     captured = capfd.readouterr()
 
     assert out is not None
-    assert "[TOOL CALL] calculator" in captured.out
+    assert "[TOOL CALL]" in captured.out
+    assert "calculator" in captured.out
     assert "[TOOL RESULT] 计算结果:3" in captured.out
 
 def test_query_uses_calculator_tool():

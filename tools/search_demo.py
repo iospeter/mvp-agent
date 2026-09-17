@@ -1,7 +1,9 @@
 from pydantic import BaseModel
 
+from tools.base import BaseTool
 
-class SearchDemoTool:
+
+class SearchDemoTool(BaseTool):
     name = "search_demo"
     description = "模拟搜索工具，这里为demo，真实替换为联网搜索API"
 

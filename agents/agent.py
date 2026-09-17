@@ -5,8 +5,9 @@ import os
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from agents._dead_loop import DeadLoopDetector
 from memory.history_store import ChatHistoryMemory
-from tools import CalculatorTool, SearchDemoTool
+from tools import CalculatorTool, SearchDemoTool, GetCurrentTimeTool, WeatherQueryTool
 
 load_dotenv()
 
@@ -27,7 +28,9 @@ class SimpleAgent:
 
         self.tools_map = {
             "calculator":CalculatorTool(),
-            "search_demo":SearchDemoTool()
+            "search_demo":SearchDemoTool(),
+            "get_current_time":GetCurrentTimeTool(),
+            "weather_query":WeatherQueryTool()
         }
 
         with open("prompts/system.md","r", encoding="utf-8") as f:
@@ -44,6 +47,9 @@ class SimpleAgent:
         """从 tools_map 自动生成 OpenAI function calling 的 tools 参数"""
         schema = []
         for name, tool in self.tools_map.items():
+            # 早失败：缺 Input 模型的工具直接抛错，避免运行时 AttributeError
+            if not hasattr(tool, "Input"):
+                raise ValueError(f"工具 {name} 缺少Input模型")
             # 用 Pydantic 模型的 schema 自动生成参数定义
             params = tool.Input.model_json_schema()
             # 删掉 Pydantic 自带的 title 字段，OpenAI 不需要
@@ -60,41 +66,64 @@ class SimpleAgent:
             })
         return schema
 
-    def run(self, user_query:str, tool_choice="auto"):
+    def run(self, user_query:str, tool_choice="auto", max_iterations:int=5):
+        """Agent 主循环：多轮工具调用，直到模型不再调工具或达到上限。
+
+                流程：
+                  1. 第一轮：带 tools 问模型
+                  2. 若模型返回 tool_calls：执行工具 → 加入上下文 → 下一轮继续问
+                  3. 若模型不再调工具：返回最终答复
+                  4. 达到 max_iterations：强制不再传 tools，让模型总结
+                """
         self.memory.add("user", user_query)
-        messages = [{"role":"system","content":self.system_promt}]
+        messages = [{"role": "system","content": self.system_promt}]
         messages.extend(self.memory.get_history())
         tools_schema = self._build_tools_schema()
-        # ===== 第一轮：让模型决定 =====
-        resp = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=0.2,
-            tools=tools_schema,     # 关键：把工具传进去
-            tool_choice= tool_choice,     #auto=模型自己决定；none=禁用；可强制 {"type":"function","function":{"name":"calculator"}}
-        )
 
-        msg = resp.choices[0].message
-        # ===== 分支：模型想调工具 =====
-        if msg.tool_calls:
-            # 把 assistant 这条带 tool_calls 的消息加进上下文（不进长期 memory）
+        detector = DeadLoopDetector(max_repeat=3)
+        for iteration in range(1, max_iterations+1):
+            is_last = iteration == max_iterations
+            api_tools = [] if is_last else tools_schema
+            api_tool_choice = "none" if is_last else tool_choice
+            # ===== 第一轮：让模型决定 =====
+            resp = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0.2,
+                tools=api_tools,  # 关键：把工具传进去
+                tool_choice=api_tool_choice,  # auto=模型自己决定；none=禁用；可强制 {"type":"function","function":{"name":"calculator"}}
+            )
+            msg = resp.choices[0].message
+            # 不再调工具，返回最终答复
+            if not msg.tool_calls:
+                if iteration == 1:
+                    print("[NO TOOL] 模型直接回答")
+                self.memory.add("assistant", msg.content)
+                return msg.content
+
+            # 把 assistant 带 tool_calls 的消息加入上下文
             messages.append(msg.model_dump(exclude_none=True))
 
+            # 执行所有工具调用
             for call in msg.tool_calls:
                 tool_name = call.function.name
                 args = json.loads(call.function.arguments or "{}")
-                print(f" [TOOL CALL] {tool_name} {args}")  # 可观测性日志
+                print(f" [TOOL CALL] iter={iteration} {tool_name} {args}")  # 可观测性日志
 
-                tool = self.tools_map.get(tool_name)
-
-                if tool is None:
-                    result = f" 工具{tool_name}不存在"
+                # 死循环检测
+                if detector.record(tool_name, args):
+                    result = f"检测到重复调用同一工具+参数，已中断。请基于已有信息回答用户。"
+                    print(f"[DEAD LOOP] {tool_name} {args}")
                 else:
-                    try:
-                        result = tool.run(**args)
-                    except Exception as e:
-                        result = f"工具执行异常: {e} "
-                print(f"[TOOL RESULT] {result} ")
+                    tool = self.tools_map.get(tool_name)
+                    if tool is None:
+                        result = f" 工具{tool_name}不存在"
+                    else:
+                        try:
+                            result = tool.run(**args)
+                        except Exception as e:
+                            result = f"工具执行异常: {e} "
+                    print(f"[TOOL RESULT] {result} ")
 
                 messages.append({
                     "role":"tool",
@@ -102,19 +131,127 @@ class SimpleAgent:
                     "content":result,
                 })
 
-            # ===== 第二轮：让模型基于工具结果总结 =====
-            resp2 = self.client.chat.completions.create(
+        # 理论上不会走到这里，最后一轮 is_last=True 时模型一定不带 tool_calls
+        answer = msg.content or "达到最大调用次数，无法继续。"
+        self.memory.add("assistant", answer)
+        return answer
+
+    def run_stream(self, user_query:str, tool_choice="auto", max_iterations:int=5):
+        """流式版本：yield (kind, payload) 事件序列。
+
+                事件类型：
+                  ("text", str)        —— 最终回答的增量文本片段
+                  ("tool_call", dict)   —— 工具调用前，payload={name, args}
+                  ("tool_result", dict)—— 工具执行后，payload={name, result}
+                  ("done", str)        —— 最终完整文本，收尾用
+                """
+        self.memory.add("user", user_query)
+        messages = [{"role": "system", "content": self.system_promt}]
+        messages.extend(self.memory.get_history())
+        tools_schema = self._build_tools_schema()
+        detector = DeadLoopDetector(max_repeat=3)
+        final_answer = ""
+
+        for iteration in range(1, max_iterations+1):
+            is_last = iteration == max_iterations
+            api_tools = [] if is_last else tools_schema
+            api_tool_choice = "none" if is_last else tool_choice
+            stream = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 temperature=0.2,
-                # 注意：第二轮通常不再传 tools，避免模型再次试图调工具陷入循环 # 如果你的场景需要链式调用，再传 tools 并加个最大轮数限制
+                tools=api_tools,
+                tool_choice=api_tool_choice,
+                stream=True,
             )
-            answer = resp2.choices[0].message.content
-        else:
-            # ===== 分支：模型直接回答（没用工具） =====
-            print("[NO TOOL] 模型直接回答")
-            answer = msg.content
+            # 累积器：流式 chunk 是增量，必须拼装
+            content_buf = ""
+            tool_calls_buf = {}
 
-        self.memory.add("assistant", answer)
-        return answer
+            for chunk in stream:
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+
+                # 增量文本：实时推给上层
+                if delta.content:
+                    content_buf += delta.content
+                    yield ("text", delta.content)
+
+                # 增量 tool_calls：按 index 累积 name 和 arguments
+                if delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        idx = tc.index
+                        if idx not in tool_calls_buf:
+                            tool_calls_buf[idx] = {"id":"", "name":"", "arguments":""}
+                        if tc.id:
+                            tool_calls_buf[idx]["id"] = tc.id
+                        if tc.function:
+                            if tc.function.name:
+                                tool_calls_buf[idx]["name"] += tc.function.name
+                            if tc.function.arguments:
+                                tool_calls_buf[idx]["arguments"] += tc.function.arguments
+
+            # 收完一轮，判断走向
+            if not tool_calls_buf:
+                # 最终回答轮
+                final_answer = content_buf
+                self.memory.add("assistant", final_answer)
+                yield ("done", final_answer)
+                return
+
+            # 工具调用轮：把 assistant 消息（带 tool_calls）加入上下文
+            messages.append({
+                "role":"assistant",
+                "content": content_buf or None,
+                "tool_calls":[
+                    {
+                        "id":tc.id,
+                        "type":"function",
+                        "function": {
+                            "name": t["name"],
+                            "arguments": t["arguments"]
+                        },
+                    }
+                    for t in tool_calls_buf.values()
+                ],
+            })
+
+
+            for t in tool_calls_buf.values():
+                tool_name = t["name"]
+                args = json.loads(t["arguments"] or "{}")
+                yield ("tool_call", {"name": tool_name, "args": args})
+
+                if detector.record(tool_name, args):
+                    result = "检测到重复调用同一工具+参数，已中断。请基于已有信息回答用户。"
+                else:
+                    tool = self.tools_map.get(tool_name)
+                    if tool is None:
+                        result = f"工具 {tool_name} 不存在"
+                    else:
+                        try:
+                            result = tool.run(**args)
+                        except Exception as e:
+                            result = f"工具执行异常: {e}"
+                yield ("tool_result", {"name": tool_name, "result": result})
+
+                messages.append({
+                    "role":"tool",
+                    "tool_call_id":tc.id,
+                    "content":result,
+                })
+
+        # 兜底：达到 max_iterations 时模型仍只输出 tool_calls 的情形
+        final_answer = final_answer or "达到最大调用次数，无法继续。"
+        self.memory.add("assistant", final_answer)
+        yield ("done", final_answer)
+
+
+
+
+
+
+
+
 

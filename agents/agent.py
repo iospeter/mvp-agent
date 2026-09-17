@@ -8,6 +8,7 @@ from openai import OpenAI
 from agents._dead_loop import DeadLoopDetector
 from memory.history_store import ChatHistoryMemory
 from tools import CalculatorTool, SearchDemoTool, GetCurrentTimeTool, WeatherQueryTool
+from tools.registry import build_tools
 
 load_dotenv()
 
@@ -26,15 +27,14 @@ class SimpleAgent:
 
         self.memory = ChatHistoryMemory(max_len=self.settings["memory_max_history"])
 
-        self.tools_map = {
-            "calculator":CalculatorTool(),
-            "search_demo":SearchDemoTool(),
-            "get_current_time":GetCurrentTimeTool(),
-            "weather_query":WeatherQueryTool()
-        }
+        # 工具表从 YAML 配置来，不再硬编码
+        self.tools_map = build_tools(self.agent_meta.get("tools", []))
 
-        with open("prompts/system.md","r", encoding="utf-8") as f:
-            self.system_promt = f.read()
+        # 人设 = 模板 + 配置渲染
+        self.system_promt = self._render_system_prompt(
+            template_path = "prompts/system.md",
+            tools_map = self.tools_map
+        )
 
 
     def list_tool_desc(self):
@@ -66,7 +66,27 @@ class SimpleAgent:
             })
         return schema
 
-    def run(self, user_query:str, tool_choice="auto", max_iterations:int=5):
+    def _render_system_prompt(self, template_path:str, tools_map:dict) -> str:
+        """把 agent.yaml 的配置和工具清单填进 system.md 模板。"""
+        with open(template_path, "r", encoding="utf-8") as f:
+            template = f.read()
+        # 拼出工具说明文本："- calculator: 执行数学计算，输入表达式字符串"
+        lines = []
+
+        for name, tool in tools_map.items():
+            lines.append(f"- {name}: {tool.description}")
+        tools_text = "\n".join(lines) if lines else "本 Agent 当前没有可用工具"
+
+        return template.format(
+            role= self.agent_meta.get("role", "你是一个实用的AI助手。"),
+            goal=self.agent_meta.get("goal", "准确回答用户的问题。"),
+            tools=tools_text,
+            language=self.agent_meta.get("language","中文"),
+        )
+
+    def run(self, user_query:str, tool_choice=None, max_iterations:int=5):
+        if tool_choice is None:
+            tool_choice = self.agent_meta.get("tool_choice", "auto")
         """Agent 主循环：多轮工具调用，直到模型不再调工具或达到上限。
 
                 流程：
@@ -136,7 +156,9 @@ class SimpleAgent:
         self.memory.add("assistant", answer)
         return answer
 
-    def run_stream(self, user_query:str, tool_choice="auto", max_iterations:int=5):
+    def run_stream(self, user_query:str, tool_choice=None, max_iterations:int=5):
+        if tool_choice is None:
+            tool_choice = self.agent_meta.get("tool_choice", "auto")
         """流式版本：yield (kind, payload) 事件序列。
 
                 事件类型：

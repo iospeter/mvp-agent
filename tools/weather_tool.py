@@ -15,7 +15,7 @@ _EN_ZH_WEATHER = {
     "Thunderstorm": "雷阵雨", "Drizzle": "毛毛雨", "Light drizzle": "小毛毛雨", "Heavy drizzle": "大毛毛雨",
     "Light rain shower": "阵雨", "Heavy rain shower": "大阵雨",
     "Light snow shower": "阵雪", "Heavy snow shower": "大阵雪",
-    "Haze": "霃",
+    "Haze": "霾",
     "Smoky haze": "烟霾", "Smoke": "烟", "Dust": "扬沙", "Sand": "沙尘",
     "Patchy rain nearby": "局部小雨", "Patchy snow nearby": "局部小雪",
     "Patchy light rain": "零星小雨", "Patchy light snow": "零星小雪",

@@ -6,13 +6,7 @@
 >
 > **适合人群**：已掌握 Python 基础、想入门 LLM Agent 开发的初中级工程师
 >
-> **实测环境**：Python 3.13 / openai 2.x / pydantic 2.x / Windows 11（macOS、Linux 同理）
->
-> **可复现性**：全部代码实测通过 —— 5 个单元测试全绿，流式 + 工具调用链路由 mock 流测试验证
->
-> **配套仓库**：`<在此填写你的 GitHub / Gitee 仓库地址>`
-
-> **阅读说明**：正文代码为便于讲解做了少量精简，与仓库完整实现可能有细微出入；凡影响运行的差异，文中均已逐条标注。
+> **可复现性**：所有代码均经过实测，5 个单元测试全绿，端到端场景验证通过
 
 ---
 
@@ -30,8 +24,6 @@
 - [十、最佳实践与工程亮点](#十最佳实践与工程亮点)
 - [十一、后续进阶方向](#十一后续进阶方向)
 - [十二、总结](#十二总结)
-- [十三、常见问题 FAQ](#十三常见问题-faq)
-- [十四、附录：完整配置文件速查](#十四附录完整配置文件速查)
 
 ---
 
@@ -68,27 +60,8 @@
 
 ### 2.2 安装依赖
 
-**先锁版本。** OpenAI SDK 1.x 与 2.x 在 `tools` / `tool_choice` 参数上的行为有差异，不锁版本很容易复现出各种"玄学问题"：
-
-```text
-# requirements.txt
-openai>=2.0,<3.0
-pydantic>=2.0
-python-dotenv>=1.0
-PyYAML>=6.0
-pytest>=8.0
-```
-
 ```bash
-# 强烈建议用独立虚拟环境，避免污染全局
-python -m venv .venv
-
-# Windows
-.venv\Scripts\activate
-# macOS / Linux
-# source .venv/bin/activate
-
-pip install -r requirements.txt
+pip install openai pydantic python-dotenv PyYAML pytest pytest-asyncio
 ```
 
 ### 2.3 准备 LLM API Key
@@ -104,129 +77,17 @@ LLM_MODEL=GLM-5.3-Flash
 
 > **小贴士**：DeepSeek、Kimi、Qwen 都改过 `LLM_BASE_URL` 即可复用全部代码。
 
-**⚠️ 紧接着要做的第一件事：把 `.env` 加进 `.gitignore`。**
+### 2.4 配置 pytest
 
-```gitignore
-# .gitignore
-.env
-.env.local
-__pycache__/
-*.pyc
-.pytest_cache/
-.idea/
-.venv/
-```
-
-同时提交一份不含密钥的 `.env.example`，方便别人/未来的自己：
-
-```env
-# .env.example —— 只放占位符，永远不要写真实 key
-LLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4
-LLM_API_KEY=your_key_here
-LLM_MODEL=GLM-5.3-Flash
-```
-
-> **真实翻车现场**：我的仓库里 `.env` 一度被 `git add` 进去了（`.gitignore` 漏写），而文章同时又写着"完整代码已开源"。**API Key 一旦进入 Git 历史，事后删文件是没用的** —— 只要你 push 过，就得去服务商后台吊销重签。
->
-> 两条自查命令，建议现在就跑一遍：
->
-> ```bash
-> git ls-files | grep -i env      # 有输出 = 已入库，立刻处理
-> git check-ignore -v .env        # 有输出 = 已被忽略，安全
-> ```
->
-> 万一已经提交，标准处置流程：
->
-> ```bash
-> git rm --cached .env            # 只从索引移除，保留本地文件
-> echo ".env" >> .gitignore
-> git commit -m "chore: stop tracking .env"
-> ```
->
-> ```bash
-> # 然后【必须】去 LLM 服务商后台：吊销旧 key → 重新签发 → 更新本地 .env
-> ```
->
-> 注意 `git rm --cached` 只能阻止后续提交，**历史里那个 commit 仍然带着 key**。如果仓库已经 push 到公开平台，要么用 `git filter-repo` 重写历史，要么直接认了并吊销 key —— 后者更快也更安全。
-
-### 2.4 pytest 的模块导入问题（归因和你想的不一样）
-
-这一节我修正了一版早期的错误结论。
-
-**先说实测结论：本项目其实没有 `pytest.ini` 也能跑通。**
-
-```bash
-python -m pytest tests/test_agent.py -v
-
-# collected 5 items
-# tests/test_agent.py::test_agent_init PASSED                    [ 20%]
-# ...
-# 5 passed in 39.59s
-```
-
-真正的规则来自 pytest 默认的 `prepend` 导入模式：
-
-> 对每个测试文件，向上查找**第一个不含 `__init__.py` 的目录**作为 basedir，并把 basedir 插入 `sys.path` 首位。
-
-于是：
-
-| `tests/__init__.py` | basedir | 结果 |
-|---|---|---|
-| **存在** | 项目根 `mvp_agent/` | 根目录进 `sys.path` → `agents` 可导入 ✅ |
-| **不存在** | `mvp_agent/tests/` | 根目录不在 `sys.path` → `ModuleNotFoundError: No module named 'agents'` ❌ |
-
-所以对症的是**两个二选一的解法**，而不是"必须加 `pythonpath = .`"：
-
-| 解法 | 做法 | 评价 |
-|---|---|---|
-| **A. 让 tests 成为包** | 新建一个空的 `tests/__init__.py` | 推荐，零配置 |
-| **B. 显式指定路径** | `pytest.ini` 里写 `pythonpath = .` | pytest 7+ 内置，适合 CI |
-
-我最终两个都留了：`tests/__init__.py` 保证默认可用，`pytest.ini` 显式声明 rootdir 与路径，避免 CI 上因为工作目录不同而翻车。
+新建 `pytest.ini`：
 
 ```ini
-# pytest.ini
 [pytest]
 pythonpath = .
-testpaths = tests
+asyncio_mode = auto
 ```
 
-> **顺手清理**：很多教程会让你加 `asyncio_mode = auto`，但它只有在装了 `pytest-asyncio` 且确实写了 `async def test_xxx` 时才起作用。本项目全是同步测试，加了只会让排查问题时多一层干扰 —— 所以我删掉了，将来真接 FastAPI 异步测试时再装回来。
-
-### 2.5 三分钟跑通（TL;DR）
-
-想直接看效果，按这个顺序走：
-
-```bash
-# 1. 建环境、装依赖
-python -m venv .venv
-.venv\Scripts\activate            # Windows
-# source .venv/bin/activate       # macOS / Linux
-pip install -r requirements.txt
-
-# 2. 配置密钥
-copy .env.example .env            # Windows
-# cp .env.example .env            # macOS / Linux
-# 然后用编辑器打开 .env，填入真实的 BASE_URL / API_KEY / MODEL
-
-# 3. 先跑测试验证环境（约 40 秒）
-python -m pytest tests/test_agent.py -v
-# 预期输出：5 passed
-
-# 4. 启动交互式 CLI
-python main.py
-```
-
-启动后依次输入下面四句，可以覆盖全部核心链路：
-
-| 输入 | 验证点 |
-|---|---|
-| `1+2等于几` | 单工具单轮调用 |
-| `北京今天几度？现在几点了？` | 一轮内并行调用多个工具 |
-| `你好` | 无需工具，直接回答 |
-| `用200字介绍Python的发展历史` | 流式打字机效果 |
-
-> **跑不通？** 先翻 [十三、常见问题 FAQ](#十三常见问题-faq)，90% 的报错都在那。
+**这个配置是踩坑得来的**。不加 `pythonpath = .`，pytest 会报 `ModuleNotFoundError: No module named 'agents'`。原因：pytest 默认不把项目根目录加到 `sys.path`。
 
 ---
 
@@ -235,33 +96,28 @@ python main.py
 ```
 mvp_agent/
 ├── agents/
-│   ├── agent.py               # Agent 主类（含 run + run_stream）★ 核心
-│   ├── agent.yaml             # Agent 元信息配置（预留，当前未参与推理）
+│   ├── agent.py               # Agent 主类（含 run + run_stream）
+│   ├── agent.yaml             # Agent 元信息配置
 │   └── _dead_loop.py          # 死循环检测器
-├── memory/                    # ★ 对话记忆模块（见 5.5 节）
+├── memory/
 │   ├── base.py                # BaseMemory 抽象基类
-│   └── history_store.py       # ChatHistoryMemory：滑动窗口历史
-├── tools/                     # ★ 工具库
-│   ├── __init__.py            # 统一导出，注册表从这里取
-│   ├── base.py                # BaseTool 抽象基类（工具的"契约"）
-│   ├── calculator.py          # 计算器（ast 白名单安全解析）
-│   ├── time_tool.py           # 时间查询（zoneinfo 时区支持）
-│   ├── weather_tool.py        # 天气查询（wttr.in，中英映射）
-│   └── search_demo.py         # 搜索占位示例（换成真实搜索 API 即可）
+│   └── history_store.py      # 对话历史存储（滑动窗口）
+├── tools/
+│   ├── base.py                # BaseTool 抽象基类
+│   ├── calculator.py          # 计算器（ast 安全解析）
+│   ├── time_tool.py           # 时间查询（时区支持）
+│   ├── weather_tool.py       # 天气查询（wttr.in API）
+│   └── search_demo.py         # 搜索示例（占位）
 ├── prompts/
-│   └── system.md              # 系统提示词（含工具调用纪律，L1 死循环防护）
+│   └── system.md              # 系统提示词（含工具调用纪律）
 ├── tests/
-│   ├── __init__.py            # ★ 让 pytest 把项目根加入 sys.path（见 2.4）
+│   ├── __init__.py            # 关键！让 pytest 识别包
 │   └── test_agent.py          # 5 个单元测试
-├── requirements.txt           # 依赖（锁版本）
+├── settings.json              # 全局设置
 ├── pytest.ini                 # pytest 配置
-├── settings.json              # 全局设置（当前只有 memory_max_history）
-├── .env.example               # 环境变量模板（可提交）
-├── .env                       # 你的真实密钥（★ 绝对不要提交）
-└── main.py                    # CLI 入口（流式输出）
+├── .env                        # 环境变量
+└── main.py                     # CLI 入口（流式）
 ```
-
-**阅读顺序建议**：`tools/base.py` → `tools/calculator.py` → `agents/agent.py` 的 `run()` → `_dead_loop.py` → `run_stream()` → `main.py`。前三个文件看完，Agent 的骨架就清楚了。
 
 ---
 
@@ -274,49 +130,29 @@ mvp_agent/
 ```python
 # tools/base.py
 from abc import ABC, abstractmethod
-from typing import Type
 from pydantic import BaseModel
 
-
 class BaseTool(ABC):
-    """所有工具的抽象基类。
-
-    约定：子类必须定义 name、description、Input（Pydantic 模型）和 run 方法。
-    在子类定义时自动校验，缺字段立即报错，避免运行时才发现。
-    """
-    name: str = ""
-    description: str = ""
-    Input: Type[BaseModel]  # 每个工具必须定义
+    name: str
+    description: str
+    Input: type  # 必须是 BaseModel 的子类
 
     def __init_subclass__(cls, **kwargs):
-        """子类化时自动校验必填字段：早失败优于晚失败"""
+        """子类化时自动校验必填字段，早失败优于晚失败"""
         super().__init_subclass__(**kwargs)
-        if not cls.name:
-            raise ValueError(f"工具类 {cls.__name__} 必须定义非空的 name")
-        if not cls.description:
-            raise ValueError(f"工具类 {cls.__name__} 必须定义非空的 description")
-        if not getattr(cls, "Input", None):
-            raise ValueError(f"工具类 {cls.__name__} 必须定义 Input Pydantic 模型")
+        for attr in ("name", "description", "Input"):
+            if not hasattr(cls, attr):
+                raise TypeError(f"工具 {cls.__name__} 缺少必需属性: {attr}")
 
     @abstractmethod
     def run(self, **kwargs) -> str:
-        """执行工具，返回字符串结果"""
+        """工具执行入口，所有参数由 Input 模型校验"""
         ...
 ```
 
-> **踩坑提醒①（极其隐蔽，值得单开一节）**：我第一版用 `hasattr` 做校验：
->
-> ```python
-> for attr in ("name", "description", "Input"):
->     if not hasattr(cls, attr):
->         raise TypeError(f"工具 {cls.__name__} 缺少必需属性: {attr}")
-> ```
->
-> 看起来挺严谨，**实际上这段校验永远不会触发**。原因：基类已经声明了 `name: str`、`description: str`、`Input: type`，子类继承之后这两个属性就一定存在，`hasattr` 恒为 `True`。于是一个忘了写 `name` 的工具类会安然通过校验，然后在运行时以莫名其妙的 `AttributeError` 炸掉 —— 校验代码反而给了你虚假的安全感。
->
-> **正确做法是校验「非空」而不是「存在」**：基类给默认空值 `name: str = ""`，子类化时判断 `if not cls.name`。这也顺带解释了基类为什么要给默认值 —— **默认值是给校验用的哨兵，不是给使用者偷懒用的**。
+> **踩坑提醒①**：早期版本让工具继承 `pydantic.BaseModel`，结果 Pydantic 把 `name = "calculator"` 当成字段校验，报 `PydanticUserError: A non-annotated attribute was detected`。改继承 `ABC` 即可。
 
-> **踩坑提醒②**：早期版本让工具继承 `pydantic.BaseModel`，结果 Pydantic 把 `name = "calculator"` 当成字段去校验，报 `PydanticUserError: A non-annotated attribute was detected`。改继承 `ABC` 即可。**经验：元数据放类属性，别放在会被 Pydantic 接管的地方。**
+> **踩坑提醒②**：`tests/__init__.py` 必须存在（可以是空文件），否则 pytest 无法识别 `from agents.agent import SimpleAgent` 这类包导入。
 
 ### 4.2 CalculatorTool：用 ast 替换 eval 防注入
 
@@ -380,17 +216,6 @@ class CalculatorTool(BaseTool):
 | `__import__('os').system('dir')` | 执行系统命令 💀 | `ValueError` ✅ |
 | `open('/etc/passwd').read()` | 读取敏感文件 💀 | `ValueError` ✅ |
 
-> **加固建议（我在仓库里用的是第二版）**：上面 `_eval_node` 对 `ast.Constant` 是"来者不拒"地返回 `node.value`，于是 `'a'+'b'` 这类字符串运算也能溜过去。虽然不算致命，但违背了"计算器只算数"的契约。稳妥写法是显式校验类型：
->
-> ```python
-> if isinstance(node, ast.Constant):
->     if isinstance(node.value, (int, float)):
->         return node.value
->     raise ValueError(f"不支持的常量类型: {type(node.value).__name__}")
-> ```
->
-> 另一个细节：`_OPERATORS[type(node.op)]` 用的是直接下标，遇到白名单外的运算符会抛 `KeyError` 而不是友好错误。虽然最终会被外层 `try` 兜住变成 `计算失败: 'FloorDiv'`，但这种报错信息对排查问题毫无帮助 —— **安全代码的报错信息同样要做到"一眼看懂"**。
-
 ### 4.3 WeatherQueryTool：外部 API 调用的鲁棒性
 
 ```python
@@ -421,29 +246,18 @@ class WeatherQueryTool(BaseTool):
         city: str = Field(..., description="城市名，如 北京、上海、Shanghai")
 
     def run(self, city: str) -> str:
-        # 防御一：拦住请求端就已经乱码的输入
+        # 防止 PowerShell stdin 编码导致中文变 '?'
         if "?" in city.strip():
             return f"城市名包含乱码占位符（可能是编码问题）: {city}"
 
         url = f"https://wttr.in/{urllib.parse.quote(city)}?format=j1&lang=zh-cn"
         try:
-            # 防御二：wttr.in 对默认 UA 不友好，必须伪装成浏览器
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            # 防御三：必加超时，防止网络卡死把整个 Agent 一起拖住
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            # 必加超时，防止网络卡死拖垮整个 Agent
+            with urllib.request.urlopen(url, timeout=10) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
-        except urllib.error.URLError as e:
-            return f"天气查询失败（网络错误）: {e}"
-        except (KeyError, IndexError, json.JSONDecodeError) as e:
-            return f"天气查询失败（数据解析错误）: {e}"
 
-        # 防御四：字段缺失全部兜底，不让 KeyError 逃出去污染 Agent 上下文
-        try:
             current = data["current_condition"][0]
-            # wttr.in 的 lang_zh 字段不是每次都返回，优先用它，缺失时回落到英文映射表
-            lang_zh = (current.get("lang_zh") or [{}])[0].get("value", "")
-            raw_desc = lang_zh or (current.get("weatherDesc") or [{}])[0].get("value", "")
-            desc = _to_zh(raw_desc)
+            desc = _to_zh(current["weatherDesc"][0]["value"])
             return (
                 f"【{city} 实时天气】\n"
                 f"天气: {desc}\n"
@@ -451,14 +265,13 @@ class WeatherQueryTool(BaseTool):
                 f"湿度: {current['humidity']} %\n"
                 f"风速: {current['windspeedKmph']} km/h"
             )
-        except (KeyError, IndexError) as e:
-            return f"天气字段解析异常: {e}"
+        except urllib.error.URLError as e:
+            return f"网络请求失败: {e}"
+        except (KeyError, json.JSONDecodeError) as e:
+            return f"天气数据解析异常: {e}"
+        except Exception as e:
+            return f"天气查询失败: {e}"
 ```
-
-> **两个真实教训**：
->
-> 1. **中文映射表要够全**。我第一版只写了 10 条，结果遇到 `Haze` 没命中，直接回显英文给用户。后来补到 30 条（晴/多云/雾/霾/各种雨雪/阵雨/沙尘……）。更稳的做法是优先取 `lang_zh` 字段，映射表只作为兜底。
-> 2. **不要用「返回的城市名是否等于输入」来判断城市是否存在**。wttr.in 会把中文城市名转成英文或拼音返回（北京 → Beijing），拿返回的 `areaName` 和输入做字符串比对必然误判，会把正常查询判成"城市不存在"。这个"校验"我写了又删 —— **宁可信任上游，也不要用错误的校验制造假故障**。
 
 > **踩坑提醒③**：必须**显式导入** `urllib.request`、`urllib.parse`、`urllib.error`，不能只写 `import urllib`。Python 3 中 `import urllib` 不会自动加载子模块。
 
@@ -738,90 +551,6 @@ api_tools = [] if is_last else tools_schema  # ← 用工具 schema 数组
 
 ---
 
-### 5.5 messages 协议：Agent 循环最容易 400 的三条规则
-
-这一节是全文最该收藏的部分。Function Calling 的报错里，**超过一半是 `messages` 数组构造错了**，跟模型和工具本身都没关系。
-
-一次完整的工具调用往返，`messages` 是这样演化的：
-
-```text
-轮次 1 请求
-├── { role: "system",    content: "你是..." }            ← 系统提示词
-├── { role: "user",      content: "北京几度？" }          ← 用户问题
-└── 附带 tools=[...], tool_choice="auto"
-
-轮次 1 响应
-└── assistant.tool_calls = [
-      { id: "call_abc", function: { name: "weather_query", arguments: '{"city":"北京"}' } }
-    ]
-
-轮次 2 请求（必须把上一步的 assistant 消息【原样】放回来）
-├── { role: "system",    content: "你是..." }
-├── { role: "user",      content: "北京几度？" }
-├── { role: "assistant", content: null, tool_calls: [{ id: "call_abc", ... }] }        ← ① 必须带上
-└── { role: "tool",      tool_call_id: "call_abc", content: "【北京 实时天气】..." }     ← ② id 必须对上
-
-轮次 2 响应
-└── assistant.content = "北京现在 29°C，烟霾……"            ← 最终答复
-```
-
-**规则一：`role: "tool"` 消息必须紧跟对应的 `assistant.tool_calls` 消息，中间不能插入任何其他消息。** 顺序错 → 400。
-
-**规则二：`tool_calls` 里有 N 个调用，就必须回 N 条 `role: "tool"` 消息，`tool_call_id` 一一对应。** 少一条、或 id 对不上 → 400。所以 5.1 里 `for call in msg.tool_calls:` 必须完整跑完 —— **即使某个工具执行失败了，也要给它回一条内容为错误信息的 tool 消息**，绝不能 `continue` 跳过：
-
-```python
-try:
-    result = tool.run(**args)
-except Exception as e:
-    result = f"工具执行异常: {e}"     # ← 异常也要转成 tool 消息回给模型
-```
-
-**规则三：`assistant` 消息里的 `tool_calls` 必须原样包含模型返回的 `id`、`type`、`function.name`、`function.arguments`。** 非流式下可以偷懒用 `msg.model_dump(exclude_none=True)`（SDK 帮你序列化好了），但**流式下没有完整的 `msg` 对象，只能手工拼** —— 而手工拼时最容易把 `id` 拼错，这就是 6.6 节那个坑。
-
-> **排查技巧**：遇到 400 别盯着报错文本猜，直接把发出去的 `messages` 打出来，只看三件事：`tool` 消息数量对不对、`tool_call_id` 有没有 `None`、`assistant.tool_calls` 的 `id` 和 `tool` 消息是否一致。**90% 的 400 在这三眼里就现原形了。**
-
-### 5.6 对话记忆：为什么工具调用过程不进 memory？
-
-`memory/history_store.py` 的滑动窗口实现很朴素，但有一个值得想清楚的设计取舍：
-
-```python
-# memory/history_store.py
-from typing import List, Dict
-from memory.base import BaseMemory
-
-
-class ChatHistoryMemory(BaseMemory):
-    def __init__(self, max_len=20):
-        self.max_len = max_len
-        self._buffer: List[Dict] = []
-
-    def add(self, role: str, content: str):
-        self._buffer.append({"role": role, "content": content})
-        if len(self._buffer) > self.max_len:
-            self._buffer = self._buffer[-self.max_len]   # 滑动窗口：裁掉最旧的
-
-    def get_history(self) -> List[Dict]:
-        return self._buffer.copy()
-
-    def clear(self):
-        self._buffer.clear()
-```
-
-`max_len` 从 `settings.json` 读入（默认 20 条）。注意 `memory.add()` 只在两个地方被调用 —— 用户提问时、模型给出最终答复时。**工具调用的中间过程（`assistant.tool_calls` 与 `role: "tool"` 消息）不会进 memory。**
-
-这是有意为之的：
-
-| 方案 | 优点 | 代价 |
-|---|---|---|
-| **只存 user / 最终 assistant**（当前实现） | memory 里永远是合法的消息序列；窗口按"条数"计数很直观 | 跨轮对话时模型看不到上一轮的工具结果，可能重复调用同一个工具 |
-| 存完整消息序列（含 tool 消息） | 上下文完整，模型知道"我刚才已经查过天气了" | 窗口极易被工具消息占满；**截断时必须保证 `assistant.tool_calls` 与 `tool` 消息成对出现，一旦截断把两者拆开，下次请求直接 400** |
-
-所以第二阶段的死循环防护本质上是在**替 memory 补位**：既然历史里没有工具调用记录，就让 `DeadLoopDetector` 在同一轮内兜住重复调用。
-
-> **给想继续深入的人留个作业**：把 memory 升级为"存完整消息序列 + 按「对话轮」而不是「消息条数」截断"（一次 user → assistant 完整往返算一轮）。这是走向生产可用的必经一步。
-
----
-
 ## 六、阶段三：流式输出 + Function Calling 兼容
 
 ### 6.1 核心难点：tool_calls 在流式下是碎片化的
@@ -1000,139 +729,6 @@ if __name__ == '__main__':
 
 > **踩坑提醒⑧**：`flush=True` 是关键，否则 Python 默认会缓冲到换行或缓冲区满才输出，打字机效果就没了。
 
-### 6.6 踩坑⑨：流式下 tool_calls 的 id 必须手工回填（最凶险的一个）
-
-这是全文最容易埋雷的地方，也是我要把"流式 + 工具调用"单独拎出来讲的原因。
-
-6.4 的 `run_stream` 里，工具调用轮需要把 assistant 消息手工拼回上下文。我第一版是这么写的：
-
-```python
-messages.append({
-    "role": "assistant",
-    "content": content_buf or None,
-    "tool_calls": [
-        {
-            "id": tc.id,                    # ❌ 看起来"就是这个循环变量"
-            "type": "function",
-            "function": {"name": t["name"], "arguments": t["arguments"]},
-        }
-        for t in tool_calls_buf.values()
-    ],
-})
-```
-
-`tc` 是上面 `for tc in delta.tool_calls` 循环留下的**残留变量**，而我的本意是取累积器里的 `t["id"]`。两者差之毫厘：
-
-- `t["id"]` —— 首片带 `id` 时存进累积器的**真实 id**
-- `tc.id` —— chunk 循环结束后的**最后一个 delta 的 id**
-
-而厂商的真实分片行为是：**`id` 和 `name` 只在第一个 chunk 出现，后续 chunk 的 `tc.id` 是 `None`。** 于是循环结束时 `tc.id` 恰好就是 `None`。
-
-后果：`assistant.tool_calls[0].id = None`，紧接着 `tool` 消息的 `tool_call_id` 也是 `None` —— **违反了 5.5 的规则三**。轻则 400，重则工具结果与调用无法配对，模型拿着答案却在瞎猜。多工具并行时更糟：`tc.id` 只保留"最后一个 chunk 的值"，两个调用的 id 会变得完全一样。
-
-**为什么它能潜伏这么久？** 因为我的 5 个单元测试全部只覆盖 `run()`（非流式），而"5 个真实场景"里前 4 个也是用 `run()` 跑的 —— **流式 + 工具调用这个组合从头到尾没被验证过**。踩坑⑦说的是"生成器不迭代就不执行"，而这里的坑更进一步：**一条从未被真正跑过的组合路径，等于没写。**
-
-**修复（一行）**：
-
-```python
-"id": t["id"],                          # ✅ 用累积器里的真实 id
-```
-
-`tool` 消息那边同样要改：
-
-```python
-messages.append({
-    "role": "tool",
-    "tool_call_id": t["id"],             # ✅ 不是 tc.id
-    "content": result,
-})
-```
-
-**怎么在没有真实 API 的情况下证明这个 bug？** 用 mock 流精确复现厂商的分片行为 —— 这是我强烈推荐的一种测试手法：
-
-```python
-# tests/test_stream_tool_id.py
-"""确定性验证：流式 tool_calls 的 id 是否被正确回填。不依赖真实 API。"""
-import os
-import sys
-from unittest.mock import patch
-
-sys.path.insert(0, os.getcwd())
-from agents.agent import SimpleAgent
-
-
-class Obj:
-    def __init__(self, **kw):
-        self.__dict__.update(kw)
-
-
-def chunk(content=None, tool_calls=None):
-    return Obj(choices=[Obj(delta=Obj(content=content, tool_calls=tool_calls))])
-
-
-def tc(index, id=None, name=None, args=None):
-    return Obj(index=index, id=id, function=Obj(name=name, arguments=args))
-
-
-REAL_ID = "call_REAL_ID_0"
-
-# 关键：精确复现厂商分片行为 —— id/name 只在首片，后续片为 None
-round1 = [
-    chunk(tool_calls=[tc(0, id=REAL_ID, name="calculator", args="")]),
-    chunk(tool_calls=[tc(0, id=None, name=None, args='{"expr"')]),
-    chunk(tool_calls=[tc(0, id=None, name=None, args=':"1+2"}')]),
-]
-round2 = [chunk(content="1+2 等于 3。")]
-
-calls = []
-
-
-def fake_create(**kwargs):
-    calls.append(kwargs)
-    return iter(round1 if len(calls) == 1 else round2)
-
-
-agent = SimpleAgent()
-with patch.object(agent.client.chat.completions, "create", side_effect=fake_create):
-    list(agent.run_stream("1+2等于几"))
-
-msgs = calls[1]["messages"]
-asst = [m for m in msgs if m.get("role") == "assistant" and m.get("tool_calls")]
-tool_msgs = [m for m in msgs if m.get("role") == "tool"]
-
-assert asst[0]["tool_calls"][0]["id"] == REAL_ID, "assistant 的 id 丢失了"
-assert tool_msgs[0]["tool_call_id"] == REAL_ID, "tool 消息的 id 对不上"
-```
-
-实测结果对比：
-
-| 版本 | `assistant.tool_calls[0].id` | `tool.tool_call_id` | 结论 |
-|---|---|---|---|
-| 修复前（`tc.id`） | `None` | `None` | ❌ 真实 API 必炸 |
-| 修复后（`t["id"]`） | `'call_REAL_ID_0'` | `'call_REAL_ID_0'` | ✅ 正确配对 |
-
-> **这条经验比 bug 本身值钱**：**测试要按「执行路径」覆盖，而不是按「功能点」覆盖。** `run()` 和 `run_stream()` 是两条完全独立的代码路径，功能等价不代表可以只测一条。凡是靠"功能一样所以不用测第二遍"说服自己的地方，都是 bug 的温床。
-
-### 6.7 流式还有一个隐藏的收尾问题
-
-`run_stream` 是生成器，`memory.add("assistant", final_answer)` 写在生成器内部。如果消费端提前 `break`（用户点了"停止生成"、WebSocket 断开），生成器会被 `close()`，**这行代码根本不会执行** —— 结果是 memory 里只有 user 没有 assistant，历史序列不完整。
-
-当前 CLI 版本每次都迭代到底，所以没暴露；接 Web 前端时这是必炸的点。最低成本的兜底是消费端加 `try/finally`：
-
-```python
-gen = agent.run_stream(q)
-try:
-    for kind, payload in gen:
-        ...
-        if user_cancelled:
-            break
-finally:
-    gen.close()
-    # 若要求历史绝对一致，可在这里补记一条 assistant 消息
-```
-
-更彻底的做法是把"写 memory"从生成器内部挪到外层 —— 谁负责编排，谁负责记账。
-
 ---
 
 ## 七、端到端验证：5 个真实场景跑通
@@ -1198,23 +794,16 @@ Python 是一种广泛使用的高级编程语言，由 Guido van Rossum 于 198
 
 | # | 现象 | 根因 | 修复 |
 |---|---|---|---|
-| 1 | `ModuleNotFoundError: No module named 'agents'` | `tests/` 下缺 `__init__.py`，pytest 把 `tests/` 而不是项目根插进了 `sys.path` | 加空的 `tests/__init__.py`（或 `pytest.ini` 设 `pythonpath = .`），二选一 |
-| 2 | `AttributeError: 'SearchDemoTool' has no attribute 'Input'` | 工具类没继承 `BaseTool`，或忘了定义 `Input` | 强制继承，`__init_subclass__` 子类化时校验 |
-| 3 | `PydanticUserError: non-annotated attribute 'name = ...'` | 工具继承 `BaseModel` 而非 `ABC` | 改继承 `ABC`，避免 Pydantic 接管类属性 |
+| 1 | `ModuleNotFoundError: No module named 'agents'` | pytest 没把项目根加到 `sys.path` | 新建 `pytest.ini` 设 `pythonpath = .` |
+| 2 | `AttributeError: 'SearchDemoTool' has no attribute 'Input'` | 工具类没继承 BaseTool | 强制继承，`__init_subclass__` 校验 |
+| 3 | `PydanticUserError: non-annotated attribute 'name = ...'` | 工具继承 `BaseModel` 而非 `ABC` | 改继承 `ABC`，避免 Pydantic 字段校验 |
 | 4 | `AttributeError: module 'datetime' has no attribute 'now'` | `import datetime` 拿到的是模块 | 改 `from datetime import datetime` |
 | 5 | `400: cannot unmarshal string into []model.Tool` | `api_tools = tool_choice` 变量名混淆 | 改 `api_tools = tools_schema` |
 | 6 | 测试断言 `[TOOL CALL] calculator` 失败 | 实际日志夹了 `iter=1 ` | 拆成 `[TOOL CALL]` + `calculator` 两条断言 |
 | 7 | PowerShell 中文城市名变 `?` | Windows stdin 编码问题 | 加 `'?' in city` 检测直接报错 |
 | 8 | `<generator object ...>` 被直接 print | 没用 for 迭代生成器 | `for kind, payload in agent.run_stream(q):` |
-| 9 | 流式下工具调用报 `400 invalid tool_call_id`，或工具结果无法配对 | 手工拼 assistant 消息时用了 chunk 循环残留变量 `tc.id`，而 `id` 只在首个 chunk 出现，后续为 `None` | 改用累积器里的 `t["id"]`，`tool` 消息同理（见 6.6） |
-| 10 | 工具忘了写 `name` 却不报错，运行时才诡异崩 | 用 `hasattr` 校验继承了基类声明属性的字段，**恒为 True** | 校验"非空"而非"存在"：`if not cls.name`（见 4.1） |
-| 11 | `.env` 里的 API Key 被提交进 Git | `.gitignore` 漏写 `.env`，而 `git add .` 一把梭 | 补 `.gitignore` 规则 + `git rm --cached .env`；**已 push 过则必须吊销重签 key** |
 
-**核心教训**：
-
-1. **90% 的 bug 不是逻辑问题**，而是变量名混淆、类型不匹配、SDK 协议细节没吃透。从错误信息里直接定位根因（比如 `FinalRequestOptions` 里的 `tools='auto'`），比瞎改快十倍。
-2. **校验"非空"，而不是校验"存在"。** `hasattr` 在继承体系下会骗你 —— 它验的是"基类声明过没有"，不是"子类实现了没有"。
-3. **没被跑过的代码路径等于没写。** 坑⑨那个 bug 能活下来，唯一原因就是"流式 + 工具调用"从没被真正执行过。功能等价 ≠ 可以只测一条路径。
+**核心教训**：90% 的 bug 不是逻辑问题，而是变量名混淆、类型不匹配、SDK 协议细节没吃透。**从错误信息（如 `FinalRequestOptions` 里的 `tools='auto'`）里直接定位根因，比瞎改快十倍。**
 
 ---
 
@@ -1224,7 +813,7 @@ Python 是一种广泛使用的高级编程语言，由 Guido van Rossum 于 198
 
 ```python
 # tests/test_agent.py
-from unittest.mock import patch          # MagicMock 在 test_force_tool_call 内部按需导入
+from unittest.mock import patch, MagicMock
 from agents.agent import SimpleAgent
 
 def test_agent_init():
@@ -1303,41 +892,20 @@ def test_force_tool_call():
 1. **不依赖真实模型行为**：`test_force_tool_call` 用 mock 把 `tool_choice` 透传校验从「行为测试」降级为「契约测试」，避免模型随机性导致 flaky test
 2. **保留真实集成测试**：`test_query`、`test_query_uses_calculator` 走真实 API，验证端到端链路
 3. **断言跟上日志格式**：日志格式变化（如加了 `iter=N`）后必须同步更新断言，否则误报
-4. **按「执行路径」覆盖，而不是按「功能点」覆盖**：`run()` 与 `run_stream()` 功能等价但代码路径独立，只测一条等于另一条没测（坑⑨就是这么来的）
-5. **用 mock 流复现厂商的分片行为**：不需要真实 API，就能确定性地验证流式协议处理是否正确。比起"概率性 flaky 的集成测试"，这类测试更适合放进 CI
 
-### 9.3 六个测试的现状（诚实版）
-
-上面 5 个测试覆盖的是**非流式路径**。第 6 个测试（`tests/test_stream_tool_id.py`，见 6.6 节）补上了流式路径的 id 回填校验 —— 它是纯 mock 测试，跑一次不到 1 秒，适合放进 CI 做回归门禁。
-
-| 测试 | 覆盖路径 | 依赖真实 API | 耗时 |
-|---|---|---|---|
-| `test_agent_init` | 初始化 / 配置加载 | 否 | < 1s |
-| `test_query` | `run()` 端到端 | 是 | ~10s |
-| `test_query_uses_calculator` | `run()` + 工具调用 + 日志 | 是 | ~10s |
-| `test_query_uses_calculator_tool` | `run()` + 工具入参断言 | 是 | ~10s |
-| `test_force_tool_call` | `tool_choice` 透传契约 | 否（mock） | < 1s |
-| `test_stream_tool_id` | `run_stream()` 流式协议 | 否（mock） | < 1s |
-
-> **一个诚实的说明**：真实 API 测试有价值，但它们**不稳定也不快**（40 秒、依赖网络和额度）。生产项目里的常见做法是：**把 mock 测试设成 CI 门禁，真实 API 测试标记为 `@pytest.mark.integration`，只在发布前手动跑。**
-
-### 9.4 运行测试
+### 9.3 运行测试
 
 ```bash
 cd mvp_agent
-python -m pytest tests/test_agent.py -v
+pytest .\tests\test_agent.py -v
 ```
 
 预期输出：
 
 ```
-tests/test_agent.py::test_agent_init PASSED                    [ 20%]
-tests/test_agent.py::test_query PASSED                         [ 40%]
-tests/test_agent.py::test_query_uses_calculator PASSED         [ 60%]
-tests/test_agent.py::test_query_uses_calculator_tool PASSED    [ 80%]
-tests/test_agent.py::test_force_tool_call PASSED               [100%]
+tests\test_agent.py .....                                                                                  [100%]
 
-============================== 5 passed in 39.59s ==============================
+=============================================================================== 5 passed in 46.55s ================================================================================
 ```
 
 ---
@@ -1374,7 +942,7 @@ print("[NO TOOL] 模型直接回答")
 
 ### 10.5 不破坏向后兼容
 
-新增 `run_stream` 方法与原 `run` 方法并列，原有 5 个测试全程保持全绿 —— 流式与生产代码解耦，互不影响。
+新增 `run_stream` 方法与原 `run` 方法并列，5 个测试全绿。生产代码与流式代码解耦，互不影响。
 
 ### 10.6 统一事件协议
 
@@ -1390,21 +958,6 @@ for kind, payload in agent.run_stream(q):
     if kind == "text":
         print(payload, end="", flush=True)
 ```
-
-### 10.7 上线前必须补的 6 件事（当前版本还缺什么）
-
-教程里的代码是**教学可用的 MVP**，不是生产可用的服务。把这份清单列清楚，比假装它已经完备更有价值：
-
-| 缺口 | 当前现状 | 建议做法 |
-|---|---|---|
-| **网络重试与退避** | 无。一次 429 / 超时就直接抛给用户 | 指数退避重试，只重试幂等请求与 429 / 5xx；`tenacity` 三行搞定 |
-| **整体超时** | 单个工具各有超时，但整个 Agent 循环没有 | 给 `run()` 加墙钟超时，或调小 `max_iterations` |
-| **Token / 成本计量** | `resp.usage` 拿到了却没用 | 累计 prompt / completion tokens，按会话或用户维度输出 |
-| **结构化日志** | `print` 直出，多用户会串流 | 换 `logging`，带 trace_id，先落盘再考虑上报 |
-| **凭证管理** | 从本地 `.env` 读 | 生产走环境变量或密钥管理服务；`.env` 永不入库（见 2.3） |
-| **异步入口** | `run_stream` 是同步生成器 | FastAPI 下用 `asyncio.to_thread` 包一层，或改用 `AsyncOpenAI` |
-
-> **我为什么单独把这节写出来**：网上很多 Agent 教程把"能跑通"包装成"可用于生产"，读者拿去一上流量就崩。**把边界说清楚，是教程作者的基本职业素养** —— 也算替读者省下几天的试错成本。
 
 ---
 

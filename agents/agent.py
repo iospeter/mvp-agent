@@ -206,7 +206,9 @@ class SimpleAgent:
                 "content": content_buf or None,
                 "tool_calls":[
                     {
-                        "id":tc.id,
+                        # 注意：必须用 t["id"]（累积器里的真实 id），
+                        # 不能用循环残留变量 tc.id —— 多数厂商只在首个 chunk 带 id，后续为 None
+                        "id": t["id"],
                         "type":"function",
                         "function": {
                             "name": t["name"],
@@ -238,7 +240,7 @@ class SimpleAgent:
 
                 messages.append({
                     "role":"tool",
-                    "tool_call_id":tc.id,
+                    "tool_call_id": t["id"],
                     "content":result,
                 })
 

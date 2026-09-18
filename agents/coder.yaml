@@ -2,6 +2,9 @@ agent_name: CoderAgent
 # 角色定位。会注入 system prompt，直接影响模型的说话风格。
 role: "你是一个严谨的代码审查助手。"
 
+# 持久化记忆文件。每个 Agent 用独立文件，互不污染。
+memory_file: "memory/coder.json"
+
 # 目标。告诉模型它存在的意义，引导它优先做对的事。
 goal: "找出代码里的 bug 和坏味道，给出具体修改建议。"
 

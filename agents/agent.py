@@ -36,6 +36,10 @@ class SimpleAgent:
             template_path = "prompts/system.md",
             tools_map = self.tools_map
         )
+        # 从配置加载持久化记忆（agent.yaml 没配 memory_file 则跳过）
+        memory_file = self.agent_meta.get("memory_file")
+        if memory_file:
+            self.memory.load_from(memory_file)
 
     def _validate_agent_meta(self, agent_yaml_path:str):
         """校验 agent.yaml 必填字段，缺了早失败，符合 BaseTool 的早失败哲学。"""
@@ -47,6 +51,25 @@ class SimpleAgent:
         tools = self.agent_meta.get("tools",[])
         if not isinstance(tools, list):
             raise ValueError(f"{agent_yaml_path} 的 tools 字段必须是列表，当前类型：{type(tools).__name__}")
+
+        memory_file = self.agent_meta.get("memory_file")
+        if memory_file is not None and not isinstance(memory_file, str):
+            raise ValueError(f"{agent_yaml_path} 的 memory_file 字段必须是字符串，当前类型：{type(memory_file).__name__}")
+
+    def _save_memory(self):
+        """把当前记忆持久化到 agent.yaml 配置的文件。没配 memory_file 则跳过。
+
+                包 try-except：保存失败不阻塞 Agent 主流程（如磁盘满），只打警告。
+                """
+        memory_file = self.agent_meta.get("memory_file")
+        if memory_file:
+            try:
+                self.memory.save_to(memory_file)
+            except Exception as e:
+                print(f"[MEMORY] 保存失败: {e}")
+
+
+
     def list_tool_desc(self):
         out = []
         for name, tool in self.tools_map.items():
@@ -129,6 +152,7 @@ class SimpleAgent:
                 if iteration == 1:
                     print("[NO TOOL] 模型直接回答")
                 self.memory.add("assistant", msg.content)
+                self._save_memory()
                 return msg.content
 
             # 把 assistant 带 tool_calls 的消息加入上下文
@@ -164,6 +188,7 @@ class SimpleAgent:
         # 理论上不会走到这里，最后一轮 is_last=True 时模型一定不带 tool_calls
         answer = msg.content or "达到最大调用次数，无法继续。"
         self.memory.add("assistant", answer)
+        self._save_memory()
         return answer
 
     def run_stream(self, user_query:str, tool_choice=None, max_iterations:int=5):
@@ -229,6 +254,7 @@ class SimpleAgent:
                 # 最终回答轮
                 final_answer = content_buf
                 self.memory.add("assistant", final_answer)
+                self._save_memory()
                 yield ("done", final_answer)
                 return
 
@@ -276,9 +302,10 @@ class SimpleAgent:
                     "content":result,
                 })
 
-        # 兜底：达到 max_iterations 时模型仍只输出 tool_calls 的情形
+        # 兑底：达到 max_iterations 时模型仍只输出 tool_calls 的情形
         final_answer = final_answer or "达到最大调用次数，无法继续。"
         self.memory.add("assistant", final_answer)
+        self._save_memory()
         yield ("done", final_answer)
 
 

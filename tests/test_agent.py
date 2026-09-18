@@ -13,7 +13,10 @@ def test_query():
 
 def test_query_uses_calculator(capfd):
     agent = SimpleAgent()
-    out = agent.run("1+2等于几")
+    agent.memory.clear()
+    with patch.object(agent,"_save_memory"):
+        out = agent.run("1+2等于几")
+
     captured = capfd.readouterr()
 
     assert out is not None
@@ -23,8 +26,12 @@ def test_query_uses_calculator(capfd):
 
 def test_query_uses_calculator_tool():
     agent = SimpleAgent()
-    with patch.object(agent.tools_map["calculator"], "run", wraps = agent.tools_map["calculator"].run) as mock_run:
+    agent.memory.clear()
+
+    with patch.object(agent,"_save_memory"), \
+        patch.object(agent.tools_map["calculator"], "run", wraps = agent.tools_map["calculator"].run) as mock_run:
         out = agent.run("1+2等于几")
+
     mock_run.assert_called()
     assert mock_run.call_args.kwargs.get("expr") == "1+2"
 

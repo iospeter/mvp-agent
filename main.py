@@ -3,7 +3,7 @@ import datetime
 import os.path
 import sys
 
-from agents import agent
+from agents.registry import create_agent
 
 def _c(text:str, color)->str:
     """给文本加 ANSI 颜色码。Windows Terminal / 现代终端支持，老 CMD 可能显示乱码。"""
@@ -136,7 +136,7 @@ if __name__ == '__main__':
         _list_agents()
         sys.exit(0)
     agent_yaml_path = _resolve_agent_path(args.agent) if args.agent else "agents/agent.yaml"
-    agent_instance = agent.SimpleAgent(agent_yaml_path=agent_yaml_path)
+    agent_instance = create_agent(agent_yaml_path)
 
     # 模型优先级：CLI --model > agent.yaml model > .env LLM_MODEL
 

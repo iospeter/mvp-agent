@@ -1,4 +1,8 @@
 agent_name: DemoAgent
+
+# Agent 类型。对应 agents/ 下 BaseAgent 子类的 agent_type 字段，缺省为 simple
+agent_type: simple
+
 # 角色定位。会注入 system prompt，直接影响模型的说话风格。
 role: "你是一个实用助手，擅长用工具解决用户的实际问题。"
 

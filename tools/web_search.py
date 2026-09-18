@@ -54,8 +54,11 @@ class WebSearchTool(BaseTool):
             return f"搜索失败：query 含乱码占位符（可能是编码问题）: {query} "
 
         try:
-            url = "https://cn.bing.com/search?q=" + urllib.parse.quote(query)
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            url = "https://cn.bing.com/search?q=" + urllib.parse.quote(query) + "&mkt=zh-CN"
+            req = urllib.request.Request(url, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            })
             with urllib.request.urlopen(req, timeout=10) as resp:
                 raw =resp.read()
                 try:

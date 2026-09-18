@@ -71,7 +71,7 @@ class SimpleAgent:
 
 
 
-    def list_tool_desc(self):
+    def _list_tool_desc(self):
         out = []
         for name, tool in self.tools_map.items():
             out.append(f"{name}: {tool.description}")
@@ -119,8 +119,6 @@ class SimpleAgent:
         )
 
     def run(self, user_query:str, tool_choice=None, max_iterations:int=5):
-        if tool_choice is None:
-            tool_choice = self.agent_meta.get("tool_choice", "auto")
         """Agent 主循环：多轮工具调用，直到模型不再调工具或达到上限。
 
                 流程：
@@ -129,6 +127,8 @@ class SimpleAgent:
                   3. 若模型不再调工具：返回最终答复
                   4. 达到 max_iterations：强制不再传 tools，让模型总结
                 """
+        if tool_choice is None:
+            tool_choice = self.agent_meta.get("tool_choice", "auto")
         self.memory.add("user", user_query)
         messages = [{"role": "system","content": self.system_prompt}]
         messages.extend(self.memory.get_history())
@@ -193,8 +193,6 @@ class SimpleAgent:
         return answer
 
     def run_stream(self, user_query:str, tool_choice=None, max_iterations:int=5):
-        if tool_choice is None:
-            tool_choice = self.agent_meta.get("tool_choice", "auto")
         """流式版本：yield (kind, payload) 事件序列。
 
                 事件类型：
@@ -203,6 +201,8 @@ class SimpleAgent:
                   ("tool_result", dict)—— 工具执行后，payload={name, result}
                   ("done", str)        —— 最终完整文本，收尾用
                 """
+        if tool_choice is None:
+            tool_choice = self.agent_meta.get("tool_choice", "auto")
         self.memory.add("user", user_query)
         messages = [{"role": "system", "content": self.system_prompt}]
         messages.extend(self.memory.get_history())

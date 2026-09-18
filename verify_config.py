@@ -13,6 +13,9 @@ import sys
 
 from agents.agent import SimpleAgent
 
+# Windows 控制台默认 GBK，✓ 等字符会 UnicodeEncodeError，强制 UTF-8 输出
+sys.stdout.reconfigure(encoding="utf-8")
+
 
 def _resolve_agent_path(name_or_path: str) -> str:
     """把 --agent 的值解析成实际 YAML 路径。

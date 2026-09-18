@@ -1,6 +1,18 @@
 from unittest.mock import patch
 
+import pytest
+
 from agents.agent import SimpleAgent
+from memory.history_store import ChatHistoryMemory
+
+
+@pytest.fixture(autouse=True)
+def isolate_memory():
+    """所有用例跳过记忆文件加载/保存，避免测试污染真实的 memory/*.json。"""
+    with patch.object(ChatHistoryMemory, "load_from"), \
+         patch.object(SimpleAgent, "_save_memory"):
+        yield
+
 
 def test_agent_init():
     agent = SimpleAgent()
@@ -14,8 +26,7 @@ def test_query():
 def test_query_uses_calculator(capfd):
     agent = SimpleAgent()
     agent.memory.clear()
-    with patch.object(agent,"_save_memory"):
-        out = agent.run("1+2等于几")
+    out = agent.run("1+2等于几")
 
     captured = capfd.readouterr()
 
@@ -28,8 +39,7 @@ def test_query_uses_calculator_tool():
     agent = SimpleAgent()
     agent.memory.clear()
 
-    with patch.object(agent,"_save_memory"), \
-        patch.object(agent.tools_map["calculator"], "run", wraps = agent.tools_map["calculator"].run) as mock_run:
+    with patch.object(agent.tools_map["calculator"], "run", wraps = agent.tools_map["calculator"].run) as mock_run:
         out = agent.run("1+2等于几")
 
     mock_run.assert_called()

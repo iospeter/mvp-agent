@@ -16,7 +16,7 @@ class BaseMemory(ABC):
         pass
 
     def save_to(self, path:str)->None:
-        """从文件加载历史记录。文件不存在视为空记忆，不报错。"""
+        """把历史记录保存到文件。基类默认不持久化，子类按需覆盖。"""
         pass
 
     def load_from(self, path:str)->None:

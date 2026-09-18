@@ -13,7 +13,7 @@ class ChatHistoryMemory(BaseMemory):
     def add(self, role: str, content: str):
         self._buffer.append({"role":role, "content":content})
         if len(self._buffer) > self.max_len:
-            self._buffer = self._buffer[-self.max_len]
+            self._buffer = self._buffer[-self.max_len:]
 
     def get_history(self) -> List[Dict]:
         return self._buffer.copy()

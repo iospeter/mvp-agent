@@ -9,9 +9,8 @@ memory_file: "memory/coder.json"
 goal: "找出代码里的 bug 和坏味道，给出具体修改建议。"
 
 # 这个 Agent 能使用哪些工具。名字必须和 tools/registry.py 里的一致。
-# 删掉某一行，模型就再也看不到这个工具。
-tools:
-  - calculator
+# 删掉某一行，模型就再也看不到这个工具。空列表 = 没有任何工具。
+tools: []
 
 # 回答语言。留空则用 system.md 模板里的默认值。
 language: "中文"

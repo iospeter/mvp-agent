@@ -12,7 +12,7 @@ class DeadLoopDetector:
 
         sig = f"{tool_name}:{sorted(args.items())}"
         self._signatures[sig] = self._signatures.get(sig, 0) + 1
-        return self._signatures[sig] == self.max_repeat >= self.max_repeat
+        return self._signatures[sig] >= self.max_repeat
 
     def reset(self):
         """每次新 query 开始时清空记录。"""

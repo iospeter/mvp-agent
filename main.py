@@ -30,7 +30,7 @@ def _resolve_agent_path(name_or_path: str) -> str:
     print(f"错误：找不到 Agent 配置 '{name_or_path}'（也试过 {candidate}）", file=sys.stderr)
     sys.exit(1)
 
-def _handle_commond(cmd: str, agent_instance) -> bool:
+def _handle_command(cmd: str, agent_instance) -> bool:
     """处理 / 开头的命令。返回 True 继续循环，False 退出。"""
     parts = cmd.split(maxsplit=1)
     name = parts[0].lower()
@@ -46,7 +46,8 @@ def _handle_commond(cmd: str, agent_instance) -> bool:
         print("  /save     导出当前对话为 Markdown")
         print("  exit/quit 退出程序")
     elif name == "/clear":
-        agent_instance.clear()
+        agent_instance.memory.clear()
+        print(f"清空当前会话")
     elif name == "/memory":
         count = len(agent_instance.memory.get_history())
         print(f"当前记忆条数: {_c(str(count), 'cyan')}")
@@ -85,7 +86,7 @@ def _handle_commond(cmd: str, agent_instance) -> bool:
     return True
 
 
-def _lsit_agents():
+def _list_agents():
     """扫描 agents/ 目录，列出所有 .yaml 文件作为可用 Agent。"""
     agents_dir = "agents"
     if not os.path.isdir(agents_dir):
@@ -132,7 +133,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.list:
-        _lsit_agents()
+        _list_agents()
         sys.exit(0)
     agent_yaml_path = _resolve_agent_path(args.agent) if args.agent else "agents/agent.yaml"
     agent_instance = agent.SimpleAgent(agent_yaml_path=agent_yaml_path)
@@ -151,7 +152,7 @@ if __name__ == '__main__':
         if q in ["exit", "quit"]:
             break
         if q.startswith("/"):
-            _handle_commond(q, agent_instance)
+            _handle_command(q, agent_instance)
             continue
         if not q:
             continue

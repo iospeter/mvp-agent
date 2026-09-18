@@ -3,7 +3,6 @@ import yaml
 import os
 
 from dotenv import load_dotenv
-from marshmallow import missing
 from openai import OpenAI
 
 from agents._dead_loop import DeadLoopDetector

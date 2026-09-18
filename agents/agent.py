@@ -3,6 +3,7 @@ import yaml
 import os
 
 from dotenv import load_dotenv
+from marshmallow import missing
 from openai import OpenAI
 
 from agents._dead_loop import DeadLoopDetector
@@ -17,6 +18,8 @@ class SimpleAgent:
             self.settings = json.load(f)
         with open(agent_yaml_path,"r", encoding="utf-8") as f:
             self.agent_meta = yaml.safe_load(f)
+
+        self._validate_agent_meta(agent_yaml_path)
 
         self.client = OpenAI(
             base_url=os.getenv("LLM_BASE_URL"),
@@ -35,7 +38,16 @@ class SimpleAgent:
             tools_map = self.tools_map
         )
 
+    def _validate_agent_meta(self, agent_yaml_path:str):
+        """校验 agent.yaml 必填字段，缺了早失败，符合 BaseTool 的早失败哲学。"""
+        required = ["agent_name", "role", "goal"]
+        missing = [k for k in required if not self.agent_meta.get(k)]
+        if missing:
+            raise ValueError(f"{agent_yaml_path} 缺少必填字段：{', '.join(missing)}")
 
+        tools = self.agent_meta.get("tools",[])
+        if not isinstance(tools, list):
+            raise ValueError(f"{agent_yaml_path} 的 tools 字段必须是列表，当前类型：{type(tools).__name__}")
     def list_tool_desc(self):
         out = []
         for name, tool in self.tools_map.items():

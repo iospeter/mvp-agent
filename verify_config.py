@@ -2,13 +2,45 @@
 verify_config.py —— 验证 agent.yaml 配置是否真正生效。
 
 运行方式（在项目根目录）：
-    python verify_config.py
+    python verify_config.py                      # 验证默认 agents/agent.yaml
+    python verify_config.py --agent coder        # 按 short name 验证
+    python verify_config.py --agent agents/coder.yaml  # 按完整路径验证
 """
+
+import argparse
+import os.path
+import sys
 
 from agents.agent import SimpleAgent
 
-agent = SimpleAgent()
 
+def _resolve_agent_path(name_or_path: str) -> str:
+    """把 --agent 的值解析成实际 YAML 路径。
+
+    支持：--agent coder  →  agents/coder.yaml
+          --agent agents/coder.yaml  →  原样使用
+    """
+    if os.path.exists(name_or_path):
+        return name_or_path
+    candidate = os.path.join("agents", f"{name_or_path}.yaml")
+    if os.path.exists(candidate):
+        return candidate
+    print(f"错误：找不到 Agent 配置 '{name_or_path}'（也试过 {candidate}）", file=sys.stderr)
+    sys.exit(1)
+
+
+parser = argparse.ArgumentParser(description="验证 Agent YAML 配置是否生效")
+parser.add_argument(
+    "--agent",
+    help="Agent 名称（如 coder）或 YAML 路径。默认 agents/agent.yaml",
+    default=None,
+)
+args = parser.parse_args()
+
+agent_yaml_path = _resolve_agent_path(args.agent) if args.agent else "agents/agent.yaml"
+agent = SimpleAgent(agent_yaml_path=agent_yaml_path)
+
+print(f"验证配置：{agent_yaml_path}")
 print("=" * 60)
 print("① 从 agent.yaml 读到的配置")
 print("=" * 60)

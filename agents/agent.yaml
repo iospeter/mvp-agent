@@ -12,6 +12,7 @@ tools:
   - weather_query
   - get_current_time
   - analysis
+  - web_search
 
 # 回答语言。留空则用 system.md 模板里的默认值。
 language: "中文"

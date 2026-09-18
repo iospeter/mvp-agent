@@ -1,5 +1,5 @@
 
-from tools import CalculatorTool, SearchDemoTool,WeatherQueryTool,GetCurrentTimeTool
+from tools import CalculatorTool, SearchDemoTool,WeatherQueryTool,GetCurrentTimeTool, WebSearchTool
 from skills.data_skill import AnalysisSkill
 # ★ 注册表：想加新工具，在这里加一行就够了。 #   这是全项目唯一需要改动的"工具清单"位置。
 _TOOLS_CLASSES = {
@@ -7,7 +7,8 @@ _TOOLS_CLASSES = {
     "search_demo": SearchDemoTool,
     "weather_query": WeatherQueryTool,
     "get_current_time": GetCurrentTimeTool,
-    "analysis": AnalysisSkill
+    "analysis": AnalysisSkill,
+    "web_search": WebSearchTool
 }
 
 

@@ -26,7 +26,7 @@ self.tools_map = {
 
 # ③ 人设写死
 with open("prompts/system.md") as f:
-    self.system_promt = f.read()      # 改人设必须改这个文件
+    self.system_prompt = f.read()      # 改人设必须改这个文件
 ```
 
 **三个病症**：
@@ -44,7 +44,7 @@ self.agent_meta = yaml.safe_load(f)       # 里面现在多了 tools 列表
 self.tools_map = build_tools(self.agent_meta["tools"])   # 按配置动态建工具表
 
 # ② 人设 = 模板 + 配置
-self.system_promt = render_system_prompt(
+self.system_prompt = render_system_prompt(
     self.agent_meta, self.tools_map
 )   # 把 role/goal/tool 描述填进模板
 ```
@@ -237,8 +237,8 @@ from tools.registry import build_tools
         self.tools_map = build_tools(self.agent_meta.get("tools", []))
 
         # ★★★ 改动点：人设 = 模板 + 配置渲染 ★★★
-        # 原来的 `self.system_promt = f.read()` 换成下面这个
-        self.system_promt = self._render_system_prompt(
+        # 原来的 `self.system_prompt = f.read()` 换成下面这个
+        self.system_prompt = self._render_system_prompt(
             template_path="prompts/system.md",
             tools_map=self.tools_map,
         )
@@ -330,7 +330,7 @@ print()
 print("=" * 60)
 print("③ 最终生成的 system prompt")
 print("=" * 60)
-print(agent.system_promt)
+print(agent.system_prompt)
 
 print()
 print("=" * 60)
@@ -338,13 +338,13 @@ print("④ 自动检查")
 print("=" * 60)
 ok = True
 
-if "{role}" in agent.system_promt or "{goal}" in agent.system_promt:
+if "{role}" in agent.system_prompt or "{goal}" in agent.system_prompt:
     print("  ✗ 模板占位符没被替换，检查 system.md 和 .format() 参数名")
     ok = False
 else:
     print("  ✓ 占位符已全部替换")
 
-if agent.agent_meta.get("role", "")[:10] in agent.system_promt:
+if agent.agent_meta.get("role", "")[:10] in agent.system_prompt:
     print("  ✓ YAML 的 role 已注入 system prompt")
 else:
     print("  ✗ YAML 的 role 没有出现在 system prompt 里")

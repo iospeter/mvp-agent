@@ -31,7 +31,7 @@ class SimpleAgent:
         self.tools_map = build_tools(self.agent_meta.get("tools", []))
 
         # 人设 = 模板 + 配置渲染
-        self.system_promt = self._render_system_prompt(
+        self.system_prompt = self._render_system_prompt(
             template_path = "prompts/system.md",
             tools_map = self.tools_map
         )
@@ -96,7 +96,7 @@ class SimpleAgent:
                   4. 达到 max_iterations：强制不再传 tools，让模型总结
                 """
         self.memory.add("user", user_query)
-        messages = [{"role": "system","content": self.system_promt}]
+        messages = [{"role": "system","content": self.system_prompt}]
         messages.extend(self.memory.get_history())
         tools_schema = self._build_tools_schema()
 
@@ -168,7 +168,7 @@ class SimpleAgent:
                   ("done", str)        —— 最终完整文本，收尾用
                 """
         self.memory.add("user", user_query)
-        messages = [{"role": "system", "content": self.system_promt}]
+        messages = [{"role": "system", "content": self.system_prompt}]
         messages.extend(self.memory.get_history())
         tools_schema = self._build_tools_schema()
         detector = DeadLoopDetector(max_repeat=3)

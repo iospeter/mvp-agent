@@ -27,7 +27,7 @@ print()
 print("=" * 60)
 print("③ 最终生成的 system prompt")
 print("=" * 60)
-print(agent.system_promt)
+print(agent.system_prompt)
 
 print()
 print("=" * 60)
@@ -35,13 +35,13 @@ print("④ 自动检查")
 print("=" * 60)
 ok = True
 
-if "{role}" in agent.system_promt or "{goal}" in agent.system_promt:
+if "{role}" in agent.system_prompt or "{goal}" in agent.system_prompt:
     print("  ✗ 模板占位符没被替换，检查 system.md 和 .format() 参数名")
     ok = False
 else:
     print("  ✓ 占位符已全部替换")
 
-if agent.agent_meta.get("role", "")[:10] in agent.system_promt:
+if agent.agent_meta.get("role", "")[:10] in agent.system_prompt:
     print("  ✓ YAML 的 role 已注入 system prompt")
 else:
     print("  ✗ YAML 的 role 没有出现在 system prompt 里")

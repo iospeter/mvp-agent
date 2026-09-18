@@ -18,3 +18,6 @@ language: "中文"
 
 # 是否允许模型自己决定用哪个工具。auto = 允许（默认）；none = 完全禁用工具
 tool_choice: "none"
+
+# 代码审查建议用更强的模型。不填则用 .env 的 LLM_MODEL。
+# model: "gpt-4o"

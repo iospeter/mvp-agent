@@ -23,3 +23,7 @@ language: "中文"
 
 # 是否允许模型自己决定用哪个工具。auto = 允许（默认）；none = 完全禁用工具
 tool_choice: "auto"
+
+# 指定模型。不填则用 .env 的 LLM_MODEL；填了则该 Agent 用指定模型。
+# 优先级：CLI --model > 此处 > .env LLM_MODEL
+#model: "GLM-5.3"

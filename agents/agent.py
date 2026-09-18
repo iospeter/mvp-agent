@@ -24,7 +24,8 @@ class SimpleAgent:
             base_url=os.getenv("LLM_BASE_URL"),
             api_key=os.getenv("LLM_API_KEY"),
         )
-        self.model = os.getenv("LLM_MODEL")
+        # 模型优先级：CLI --model（main.py 覆盖）> agent.yaml model > .env LLM_MODEL
+        self.model = self.agent_meta.get("model") or os.getenv("LLM_MODEL")
 
         self.memory = ChatHistoryMemory(max_len=self.settings["memory_max_history"])
 

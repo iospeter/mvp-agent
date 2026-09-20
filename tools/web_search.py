@@ -1,3 +1,4 @@
+import gzip
 import html
 import re
 import urllib.request
@@ -17,6 +18,38 @@ class _Result:
     def format(self):
         url = self.url.strip('`')
         return f"- {self.title}\n  {self.snippet}\n  {url}"
+
+def _fetch_page_text(url:str, max_chars:int=800, timeout:int=5) -> str:
+    """抓取网页正文的可读文本（剥离 script/style/标签），截断到 max_chars。
+
+        用于补充比 Bing 摘要更具体的信息。任何失败都返回空串，由调用方降级，不影响主结果。
+        """
+    try:
+        req = urllib.request.Request(url, headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'identity',
+        })
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read(200_000)  #最多读 200KB，防巨型页面拖慢响应
+            encoding_hdr = (resp.headers.get('Content-Encoding') or "").lower()
+        if "gzip" in encoding_hdr:
+            raw = gzip.decompress(raw)
+        text = raw.decode("utf-8", errors="ignore")
+        if text.count("\ufffd") / max(len(text), 1) < 0.05:
+            return ""
+        text = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r"<[^>]+>", " ", text)
+        text = html.unescape(text)
+        text = re.sub(r"\s+", " ", text).strip()
+
+        # 二次检测：剥标签后若仍有大量非可读字符（如 brotli 残留），降级为空
+        if text and sum(1 for c in text if not c.isprintable()) / len(text) > 0.1:
+            return ""
+
+        return text[:max_chars]
+    except Exception:
+        return ""
 
 def _parse_bing(html_text:str, max_results:int = 5) ->list:
     """从 Bing 国内版 HTML 抓前 N 条结果。
@@ -43,7 +76,7 @@ def _parse_bing(html_text:str, max_results:int = 5) ->list:
 
 class WebSearchTool(BaseTool):
     name = "web_search"
-    description = "联网搜索，返回前 5 条结果（标题+摘要+链接）。用于获取实时信息或回答需要联网的问题。"
+    description = "联网搜索，返回前 5 条结果（标题+摘要+链接）并附首条结果的正文摘录。用于获取实时信息或回答需要联网的问题。"
     class Input(BaseModel):
         query: str
 
@@ -65,6 +98,7 @@ class WebSearchTool(BaseTool):
                     html_text = raw.decode("utf-8")
                 except UnicodeDecodeError:
                     html_text = raw.decode("utf-8",errors="replace")
+            html_text = html_text[:500_000] # 超大页面截断保护
             results = _parse_bing(html_text, max_results=5)
             if not results:
                 return f"未找到与 ' {query} ' 相关的结果（可能被限流或页面结构变化）"
@@ -72,6 +106,10 @@ class WebSearchTool(BaseTool):
             lines = [f"【Web 搜索结果】query= {query}"]
             for r in results:
                 lines.append(r.format())
+            # 正文摘录：抓首条结果页面正文，弥补搜索摘要信息不足
+            page_text = _fetch_page_text(results[0].url.strip('`')) if results[0].url else ""
+            if page_text:
+                lines.append(f"【首条结果正文摘录】{page_text}")
             return "\n".join(lines)
         except urllib.error.URLError as e:
             return f"搜索失败（网络错误）: {e} "

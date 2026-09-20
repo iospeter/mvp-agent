@@ -6,26 +6,34 @@ class PlanExecuteAgent(SimpleAgent):
         逼模型输出分步计划，再把计划并入问题交给标准循环执行。
         """
     agent_type = "plan_execute"
+    _pending_plan:str = None # 当前查询待注入的计划，经 to_context_query 用完即清
     def run(self, user_query:str, tool_choice=None, max_iterations:int=5) -> str:
-        plan = self._make_plan(user_query)
-        print(f"=== PLAN ===\n {plan} \n=== /PLAN ===")
+        _pending_plan = self._make_plan(user_query)
+        print(f"=== PLAN ===\n {_pending_plan} \n=== /PLAN ===")
         return super().run(
-            self._enrich_query(user_query, plan),
+            user_query,
             tool_choice=tool_choice,
             max_iterations=max_iterations
         )
 
     def run_stream(self, user_query:str, tool_choice=None, max_iterations:int=5):
-        plan = self._make_plan(user_query)
-        yield ( "text" , f"【执行计划】\n {plan} \n【/执行计划】\n" )
+        self._pending_plan = self._make_plan(user_query)
+        yield ( "text" , f"【执行计划】\n {self._pending_plan} \n【/执行计划】\n" )
         yield from super().run_stream(
-            self._enrich_query(user_query,plan),
+            user_query,
             tool_choice=tool_choice,
             max_iterations=max_iterations
         )
 
-    def _enrich_query(self, user_query:str, plan:str) -> str:
-        return f" {user_query} \n\n（请按以下计划执行：\n {plan} \n）"
+    def to_memory_query(self, user_query:str) -> str:
+        return user_query
+
+    def to_context_query(self, user_query:str) -> str:
+        plan = self._pending_plan
+        self._pending_plan = None # 用完即清，防止污染下一轮查询
+        if plan:
+            return f" {user_query} \n\n（请按以下计划执行：\n {plan} \n）"
+        return user_query
 
     def _make_plan(self, user_query:str) -> str:
         """规划阶段：不给工具、tool_choice=none，只让模型输出编号步骤。"""

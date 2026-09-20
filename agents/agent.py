@@ -19,9 +19,12 @@ class SimpleAgent(BaseAgent):
                 """
         if tool_choice is None:
             tool_choice = self.agent_meta.get("tool_choice", "auto")
-        self.memory.add("user", user_query)
+        self.memory.add("user", self.to_memory_query(user_query))
         messages = [{"role": "system","content": self.system_prompt}]
         messages.extend(self.memory.get_history())
+        # 最后一条是刚入记忆的用户消息；发给 LLM 的版本可能与记忆版本不同（钩子扩展点）
+        messages[-1]["content"] = self.to_context_query(user_query)
+
         tools_schema = self._build_tools_schema()
 
         detector = DeadLoopDetector(max_repeat=3)
@@ -93,9 +96,13 @@ class SimpleAgent(BaseAgent):
                 """
         if tool_choice is None:
             tool_choice = self.agent_meta.get("tool_choice", "auto")
-        self.memory.add("user", user_query)
+        self.memory.add("user", self.to_memory_query(user_query))
         messages = [{"role": "system", "content": self.system_prompt}]
         messages.extend(self.memory.get_history())
+
+        # 最后一条是刚入记忆的用户消息；发给 LLM 的版本可能与记忆版本不同（钩子扩展点）
+        messages[-1]["content"] = self.to_context_query(user_query)
+
         tools_schema = self._build_tools_schema()
         detector = DeadLoopDetector(max_repeat=3)
         final_answer = ""

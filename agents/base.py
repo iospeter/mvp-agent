@@ -145,6 +145,14 @@ class BaseAgent:
             language=self.agent_meta.get("language","中文"),
         )
 
+    # ========== 扩展点（子类可覆盖，控制"存什么"与"发什么"） ==========
+    def to_memory_query(self, user_query:str) -> str:
+        """写入持久化记忆的用户文本。默认原样存储。"""
+        return user_query
+    def to_context_query(self, user_query:str) -> str:
+        """发给 LLM 的用户文本。默认与记忆一致；子类可注入增强内容（如执行计划）。"""
+        return user_query
+
     def run(self, user_query:str, tool_choice=None, max_iterations:int=5) -> str:
         """非流式执行一轮问答，返回最终回答文本。"""
         pass

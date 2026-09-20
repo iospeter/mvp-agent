@@ -145,7 +145,7 @@ class BaseAgent:
             language=self.agent_meta.get("language","中文"),
         )
 
-    def run(self, user_query:str, tool_choice=None, max_iterations:int=5):
+    def run(self, user_query:str, tool_choice=None, max_iterations:int=5) -> str:
         """非流式执行一轮问答，返回最终回答文本。"""
         pass
 

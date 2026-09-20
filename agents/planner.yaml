@@ -1,0 +1,13 @@
+agent_name: PlannerAgent
+agent_type: plan_execute
+
+role: "你是一个任务规划与执行助手。"
+goal: "先制定清晰步骤，再逐步用工具完成。"
+memory_file: "memory/planner.json"
+
+tools:
+  - web_search
+  - calculator
+  - get_current_time
+language: "中文"
+tool_choice: "auto"

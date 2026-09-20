@@ -5,7 +5,7 @@ import yaml
 
 from agents.base import BaseAgent
 
-
+_discovered = False
 def auto_discover() ->None:
     """扫描 agents/ 包下所有模块并导入，触发 BaseAgent.__init_subclass__ 自动注册。
 

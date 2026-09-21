@@ -2,3 +2,6 @@ openai>=1.0.0
 pydantic>=2.0.0
 PyYAML>=6.0
 python-dotenv>=1.0.0
+
+# 开发依赖
+pytest>=8.0.0

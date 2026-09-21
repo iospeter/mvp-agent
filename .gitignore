@@ -1,2 +1,27 @@
 # 运行时生成的 Agent 会话记忆
 memory/*.json
+
+# ===== 密钥与环境配置 =====
+# .env 里有 API Key，绝不能进仓库
+.env
+.env.*
+# 但允许提交模板文件，让别人知道要配哪些变量
+!.env.example
+
+# 备份文件
+.env.backup_*
+*.backup_*
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# ===== 运行时产物 =====
+exports/
+traces/
+
+# ===== IDE =====
+.idea/
+.vscode/
